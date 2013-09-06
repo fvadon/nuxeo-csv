@@ -1,10 +1,10 @@
 /*
- * (C) Copyright 2012 Nuxeo SA (http://nuxeo.com/) and contributors.
+ * (C) Copyright 2012-2013 Nuxeo SA (http://nuxeo.com/) and contributors.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the GNU Lesser General Public License
  * (LGPL) version 2.1 which accompanies this distribution, and is available at
- * http://www.gnu.org/licenses/lgpl.html
+ * http://www.gnu.org/licenses/lgpl-2.1.html
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -13,8 +13,8 @@
  *
  * Contributors:
  *     Thomas Roger
+ *     Florent Guillaume
  */
-
 package org.nuxeo.ecm.csv;
 
 import static org.nuxeo.ecm.csv.CSVImportLog.Status;
@@ -23,6 +23,7 @@ import static org.nuxeo.ecm.csv.Constants.CSV_NAME_COL;
 import static org.nuxeo.ecm.csv.Constants.CSV_TYPE_COL;
 
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
@@ -37,10 +38,10 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.nuxeo.common.utils.FileUtils;
 import org.nuxeo.common.utils.Path;
 import org.nuxeo.ecm.automation.AutomationService;
 import org.nuxeo.ecm.automation.OperationChain;
@@ -50,10 +51,8 @@ import org.nuxeo.ecm.automation.core.operations.notification.SendMail;
 import org.nuxeo.ecm.automation.core.scripting.Expression;
 import org.nuxeo.ecm.automation.core.scripting.Scripting;
 import org.nuxeo.ecm.automation.core.util.StringList;
-import org.nuxeo.ecm.core.api.Blob;
 import org.nuxeo.ecm.core.api.ClientException;
 import org.nuxeo.ecm.core.api.ClientRuntimeException;
-import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
 import org.nuxeo.ecm.core.api.DocumentRef;
 import org.nuxeo.ecm.core.api.NuxeoPrincipal;
@@ -82,10 +81,14 @@ import org.nuxeo.runtime.api.Framework;
 import au.com.bytecode.opencsv.CSVReader;
 
 /**
- * @author <a href="mailto:troger@nuxeo.com">Thomas Roger</a>
+ * Work task to import form a CSV file. Because the file is read from the local
+ * filesystem, this must be executed in a local queue.
+ *
  * @since 5.7
  */
 public class CSVImporterWork extends AbstractWork {
+
+    private static final long serialVersionUID = 1L;
 
     private static final Log log = LogFactory.getLog(CSVImporterWork.class);
 
@@ -95,43 +98,39 @@ public class CSVImporterWork extends AbstractWork {
 
     public static final String CONTENT_FILED_TYPE_NAME = "content";
 
-    protected final CSVImportId id;
-
     protected String repositoryName;
 
     protected String parentPath;
 
     protected String username;
 
-    protected Blob csvBlob;
+    protected File csvFile;
+
+    protected String csvFileName;
 
     protected CSVImporterOptions options;
 
-    protected DateFormat dateformat;
+    protected transient DateFormat dateformat;
 
     protected Date startDate;
 
     protected List<CSVImportLog> importLogs = new ArrayList<CSVImportLog>();
 
-    public CSVImporterWork(CSVImportId id) {
-        this.id = id;
+    public CSVImporterWork(String id) {
+        super(id);
     }
 
     public CSVImporterWork(String repositoryName, String parentPath,
-            String username, Blob csvBlob, CSVImporterOptions options) {
-        this.startDate = new Date();
-        this.id = CSVImportId.create(repositoryName, parentPath, csvBlob,
-                startDate);
+            String username, File csvFile, String csvFileName,
+            CSVImporterOptions options) {
+        super(CSVImportId.create(repositoryName, parentPath, csvFile));
         this.repositoryName = repositoryName;
         this.parentPath = parentPath;
         this.username = username;
-        this.csvBlob = csvBlob;
+        this.csvFile = csvFile;
+        this.csvFileName = csvFileName;
         this.options = options;
-        this.dateformat = new SimpleDateFormat(options.getDateFormat());
-    }
-
-    public CSVImportId getId() {
-        return id;
+        startDate = new Date();
     }
 
     @Override
@@ -152,24 +151,29 @@ public class CSVImporterWork extends AbstractWork {
     public void work() throws Exception {
         setStatus("Importing");
         initSession(repositoryName);
+        CSVReader csvReader = null;
         try {
-            doImport(session);
+            csvReader = new CSVReader(new FileReader(csvFile));
+            doImport(csvReader);
         } catch (IOException e) {
             logError(0, "Error while doing the import: %s",
                     "label.csv.importer.errorDuringImport", e.getMessage());
             log.debug(e, e);
+        } finally {
+            if (csvReader != null) {
+                csvReader.close();
+            }
         }
 
         if (options.sendEmail()) {
             setStatus("Sending email");
-            sendMail(session);
+            sendMail();
         }
         setStatus(null);
     }
 
-    protected void doImport(CoreSession session) throws IOException {
-        log.info(String.format("Importing CSV file: %s", csvBlob.getFilename()));
-        CSVReader csvReader = new CSVReader(csvBlob.getReader());
+    protected void doImport(CSVReader csvReader) throws IOException {
+        log.info(String.format("Importing CSV file: %s", csvFileName));
 
         String[] header = csvReader.readNext();
         if (header == null) {
@@ -195,17 +199,11 @@ public class CSVImporterWork extends AbstractWork {
             return;
         }
 
-        boolean transactionStarted = false;
-        if (!isTransactionStarted) {
-            startTransaction();
-            transactionStarted = true;
-        }
-
         try {
             int batchSize = options.getBatchSize();
             long docsCreatedCount = 0;
             long lineNumber = 0;
-            while (true) {
+            for (;;) {
                 lineNumber++;
                 String[] line = csvReader.readNext();
                 if (line == null) {
@@ -220,8 +218,8 @@ public class CSVImporterWork extends AbstractWork {
                 }
 
                 try {
-                    if (importLine(session, line, lineNumber, nameIndex,
-                            typeIndex, header)) {
+                    if (importLine(line, lineNumber, nameIndex, typeIndex,
+                            header)) {
                         docsCreatedCount++;
                         if (docsCreatedCount % batchSize == 0) {
                             commitOrRollbackTransaction();
@@ -237,14 +235,19 @@ public class CSVImporterWork extends AbstractWork {
                     log.debug(unwrappedException, unwrappedException);
                 }
             }
+            try {
+                session.save();
+            } catch (ClientException e) {
+                Throwable ue = unwrapException(e);
+                logError(lineNumber, "Unable to save: %s",
+                        "label.csv.importer.unableToSave", ue.getMessage());
+                log.debug(ue, ue);
+            }
         } finally {
             commitOrRollbackTransaction();
-            if (!transactionStarted) {
-                startTransaction();
-            }
+            startTransaction();
         }
-        log.info(String.format("Done importing CSV file: %s",
-                csvBlob.getFilename()));
+        log.info(String.format("Done importing CSV file: %s", csvFileName));
     }
 
     /**
@@ -253,9 +256,9 @@ public class CSVImporterWork extends AbstractWork {
      * @return {@code true} if a document has been created or updated,
      *         {@code false} otherwise.
      */
-    protected boolean importLine(CoreSession session, String[] line,
-            final long lineNumber, int nameIndex, int typeIndex,
-            String[] headerValues) throws ClientException {
+    protected boolean importLine(String[] line, final long lineNumber,
+            int nameIndex, int typeIndex, String[] headerValues)
+            throws ClientException {
         final String name = line[nameIndex];
         final String type = line[typeIndex];
         if (StringUtils.isBlank(name)) {
@@ -284,8 +287,8 @@ public class CSVImporterWork extends AbstractWork {
             return false;
         }
 
-        return createOrUpdateDocument(lineNumber, session, parentPath, name,
-                type, values);
+        return createOrUpdateDocument(lineNumber, parentPath, name, type,
+                values);
     }
 
     protected Map<String, Serializable> computePropertiesMap(long lineNumber,
@@ -365,15 +368,15 @@ public class CSVImporterWork extends AbstractWork {
                                 if (field.getType() instanceof StringType) {
                                     fieldValue = stringValue;
                                 } else if (field.getType() instanceof IntegerType) {
-                                    fieldValue = Integer.parseInt(stringValue);
+                                    fieldValue = Integer.valueOf(stringValue);
                                 } else if (field.getType() instanceof LongType) {
-                                    fieldValue = Long.parseLong(stringValue);
+                                    fieldValue = Long.valueOf(stringValue);
                                 } else if (field.getType() instanceof DoubleType) {
-                                    fieldValue = Double.parseDouble(stringValue);
+                                    fieldValue = Double.valueOf(stringValue);
                                 } else if (field.getType() instanceof BooleanType) {
                                     fieldValue = Boolean.valueOf(stringValue);
                                 } else if (field.getType() instanceof DateType) {
-                                    fieldValue = dateformat.parse(stringValue);
+                                    fieldValue = getDateFormat().parse(stringValue);
                                 }
                             }
                         }
@@ -395,23 +398,30 @@ public class CSVImporterWork extends AbstractWork {
         return null;
     }
 
+    protected DateFormat getDateFormat() {
+        // transient field so may become null
+        if (dateformat == null) {
+            dateformat = new SimpleDateFormat(options.getDateFormat());
+        }
+        return dateformat;
+    }
+
     protected boolean createOrUpdateDocument(long lineNumber,
-            CoreSession session, String parentPath, String name, String type,
+            String parentPath, String name, String type,
             Map<String, Serializable> properties) throws ClientException {
         String targetPath = new Path(parentPath).append(name).toString();
         DocumentRef docRef = new PathRef(targetPath);
         if (options.getCSVImporterDocumentFactory().exists(session, parentPath,
                 name, type, properties)) {
-            return updateDocument(lineNumber, session, docRef, properties);
+            return updateDocument(lineNumber, docRef, properties);
         } else {
-            return createDocument(lineNumber, session, parentPath, name, type,
+            return createDocument(lineNumber, parentPath, name, type,
                     properties);
         }
     }
 
-    protected boolean createDocument(long lineNumber, CoreSession session,
-            String parentPath, String name, String type,
-            Map<String, Serializable> properties) {
+    protected boolean createDocument(long lineNumber, String parentPath,
+            String name, String type, Map<String, Serializable> properties) {
         try {
             options.getCSVImporterDocumentFactory().createDocument(session,
                     parentPath, name, type, properties);
@@ -428,8 +438,8 @@ public class CSVImporterWork extends AbstractWork {
         return false;
     }
 
-    protected boolean updateDocument(long lineNumber, CoreSession session,
-            DocumentRef docRef, Map<String, Serializable> properties) {
+    protected boolean updateDocument(long lineNumber, DocumentRef docRef,
+            Map<String, Serializable> properties) {
         if (options.updateExisting()) {
             try {
                 options.getCSVImporterDocumentFactory().updateDocument(session,
@@ -454,15 +464,15 @@ public class CSVImporterWork extends AbstractWork {
     }
 
     protected void logError(long lineNumber, String message,
-            String localizedMessage, Object... params) {
+            String localizedMessage, String... params) {
         importLogs.add(new CSVImportLog(lineNumber, ERROR, String.format(
-                message, params), localizedMessage, params));
+                message, (Object[]) params), localizedMessage, params));
         String lineMessage = String.format("Line %d", lineNumber);
-        String errorMessage = String.format(message, params);
+        String errorMessage = String.format(message, (Object[]) params);
         log.error(String.format("%s: %s", lineMessage, errorMessage));
     }
 
-    protected void sendMail(CoreSession session) throws Exception {
+    protected void sendMail() throws Exception {
         UserManager userManager = Framework.getLocalService(UserManager.class);
         NuxeoPrincipal principal = userManager.getPrincipal(username);
         String email = principal.getEmail();
@@ -483,7 +493,7 @@ public class CSVImporterWork extends AbstractWork {
                 id, Status.SKIPPED, Status.ERROR);
         ctx.put("importResult", importResult);
         ctx.put("skippedAndErrorImportLogs", skippedAndErrorImportLogs);
-        ctx.put("csvFilename", csvBlob.getFilename());
+        ctx.put("csvFilename", csvFileName);
         ctx.put("startDate", DateFormat.getInstance().format(startDate));
         ctx.put("username", username);
 
@@ -495,7 +505,7 @@ public class CSVImporterWork extends AbstractWork {
 
         StringList to = buildRecipientsList(email);
         Expression from = Scripting.newExpression("Env[\"mail.from\"]");
-        String subject = "CSV Import result of " + csvBlob.getFilename();
+        String subject = "CSV Import result of " + csvFileName;
         String message = loadTemplate(TEMPLATE_IMPORT_RESULT);
 
         try {
@@ -509,7 +519,7 @@ public class CSVImporterWork extends AbstractWork {
         } catch (Exception e) {
             log.error(String.format(
                     "Unable to notify user '%s' for import result of '%s': %s",
-                    username, csvBlob.getFilename(), e.getMessage()));
+                    username, csvFileName, e.getMessage()));
             log.debug(e, e);
             throw e;
         }
@@ -543,7 +553,7 @@ public class CSVImporterWork extends AbstractWork {
                 key);
         if (io != null) {
             try {
-                return FileUtils.read(io);
+                return IOUtils.toString(io, "UTF-8");
             } catch (IOException e) {
                 throw new ClientRuntimeException(e);
             } finally {
