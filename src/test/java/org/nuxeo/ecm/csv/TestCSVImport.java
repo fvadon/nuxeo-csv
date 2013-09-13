@@ -57,7 +57,7 @@ import com.google.inject.Inject;
  */
 @RunWith(FeaturesRunner.class)
 @Features({ TransactionalFeature.class, CoreFeature.class })
-@Deploy({ "org.nuxeo.ecm.csv", "org.nuxeo.runtime.datasource" })
+@Deploy({ "studio.extensions.ecp","org.nuxeo.ecm.csv", "org.nuxeo.runtime.datasource" })
 @RepositoryConfig(repositoryFactoryClass = PoolingRepositoryFactory.class, cleanup = Granularity.METHOD)
 public class TestCSVImport {
 
@@ -89,13 +89,13 @@ public class TestCSVImport {
         TransactionHelper.commitOrRollbackTransaction();
 
         CSVImportId importId = csvImporter.launchImport(session, "/",
-                getCSVFile("docs_ok.csv"), options);
+                getCSVFile("ExtraSimpleNoFileMiniNoNameNoType.csv"), options);
 
         workManager.awaitCompletion(10, TimeUnit.SECONDS);
         TransactionHelper.startTransaction();
 
         List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
-        assertEquals(2, importLogs.size());
+        assertEquals(5, importLogs.size());
         CSVImportLog importLog = importLogs.get(0);
         assertEquals(1, importLog.getLine());
         assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
@@ -103,34 +103,11 @@ public class TestCSVImport {
         assertEquals(2, importLog.getLine());
         assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
 
-        assertTrue(session.exists(new PathRef("/myfile")));
-        DocumentModel doc = session.getDocument(new PathRef("/myfile"));
-        assertEquals("My File", doc.getTitle());
-        assertEquals("a simple file", doc.getPropertyValue("dc:description"));
-        List<String> contributors = Arrays.asList((String[]) doc.getPropertyValue("dc:contributors"));
-        assertEquals(3, contributors.size());
-        assertTrue(contributors.contains("contributor1"));
-        assertTrue(contributors.contains("contributor2"));
-        assertTrue(contributors.contains("contributor3"));
-        Calendar issueDate = (Calendar) doc.getPropertyValue("dc:issued");
-        assertEquals(
-                "10/01/2010",
-                new SimpleDateFormat(options.getDateFormat()).format(issueDate.getTime()));
+        assertTrue(session.exists(new PathRef("/FOOBAR 6.D.20100416.9")));
+        DocumentModel doc = session.getDocument(new PathRef("/FOOBAR 6.D.20100416.9"));
+        assertEquals("FOOBAR 6.D.20100416.9", doc.getTitle());
+        assertEquals("D", doc.getPropertyValue("bg:IDSubject"));
 
-        assertTrue(session.exists(new PathRef("/mynote")));
-        doc = session.getDocument(new PathRef("/mynote"));
-        assertEquals("My Note", doc.getTitle());
-        assertEquals("a simple note", doc.getPropertyValue("dc:description"));
-        assertEquals("note content", doc.getPropertyValue("note:note"));
-        contributors = Arrays.asList((String[]) doc.getPropertyValue("dc:contributors"));
-        assertEquals(3, contributors.size());
-        assertTrue(contributors.contains("bender"));
-        assertTrue(contributors.contains("leela"));
-        assertTrue(contributors.contains("fry"));
-        issueDate = (Calendar) doc.getPropertyValue("dc:issued");
-        assertEquals(
-                "12/12/2012",
-                new SimpleDateFormat(options.getDateFormat()).format(issueDate.getTime()));
     }
 
     @Test

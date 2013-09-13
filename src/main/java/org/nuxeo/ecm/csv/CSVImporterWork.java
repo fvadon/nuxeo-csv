@@ -189,12 +189,14 @@ public class CSVImporterWork extends AbstractWork {
                 typeIndex = col;
             }
         }
+        /* from custom evol
+         * if no type -> File, if no name -> Calculated from other columns, so no need to log it
         if (nameIndex == -1 || typeIndex == -1) {
             logError(0, "Missing 'name' or 'type' column",
                     "label.csv.importer.missingNameOrTypeColumn");
             return;
         }
-
+		*/
         boolean transactionStarted = false;
         if (!isTransactionStarted) {
             startTransaction();
@@ -256,13 +258,19 @@ public class CSVImporterWork extends AbstractWork {
     protected boolean importLine(CoreSession session, String[] line,
             final long lineNumber, int nameIndex, int typeIndex,
             String[] headerValues) throws ClientException {
-        final String name = line[nameIndex];
-        final String type = line[typeIndex];
-        if (StringUtils.isBlank(name)) {
-            logError(lineNumber, "Missing 'name' value",
-                    "label.csv.importer.missingNameValue");
-            return false;
+        final String name ;
+        final String type ;
+        
+        
+        
+        if (typeIndex!=-1) {
+        	type = line[typeIndex];
         }
+        else {
+        	type = "File";
+        }
+        
+        
         if (StringUtils.isBlank(type)) {
             logError(lineNumber, "Missing 'type' value",
                     "label.csv.importer.missingTypeValue");
@@ -283,12 +291,53 @@ public class CSVImporterWork extends AbstractWork {
             // skip this line
             return false;
         }
+        
+        if (nameIndex!=-1) {
+        	name = line[nameIndex];
+        }
+        else {
+        	/* Specific name calculator from  IDBUilding, IDSector, IDSubject, IDDocument, IDDocumentDate */
+        	name = getCalculatedName(values);
+        	//TODO autocalculate the name from other colums, maybe should be done after
+        	//name ="tobedone";
+        }
+        
+        if (StringUtils.isBlank(name)) {
+            logError(lineNumber, "Missing 'name' value or incorrect parameter name",
+                    "label.csv.importer.missingNameValue");
+            return false;
+        }
+        
 
         return createOrUpdateDocument(lineNumber, session, parentPath, name,
                 type, values);
     }
 
-    protected Map<String, Serializable> computePropertiesMap(long lineNumber,
+    /** 
+     * Specific name calculator from  IDBUilding, IDSector, IDSubject, IDDocument, IDDocumentDate in the schema bg (building)
+     * Should return null if one of the values if blank.
+     * The name should be : IDBUilding IDSector.IDSubject.IDDocumentDate.IDDocument
+     * */
+    
+    private String getCalculatedName(Map<String, Serializable> values) {
+		// TODO Auto-generated method stub
+    	String name = null;
+    	if(!(StringUtils.isBlank((String) values.get("bg:IDBuilding")) || 
+    			StringUtils.isBlank((String) values.get("bg:IDSector")) ||
+    			StringUtils.isBlank((String) values.get("bg:IDSubject")) ||
+    			StringUtils.isBlank((String) values.get("bg:IDDocument")) ||
+    			StringUtils.isBlank((String) values.get("bg:IDDocumentDate"))
+    			)) {
+		name = (String) values.get("bg:IDBuilding")+" "+(String) values.get("bg:IDSector")+"."
+    			+(String) values.get("bg:IDSubject")+"."
+    			+(String) values.get("bg:IDDocumentDate")+"."
+    			+(String) values.get("bg:IDDocument");
+		}
+    	
+    	return name;
+	}
+
+	protected Map<String, Serializable> computePropertiesMap(long lineNumber,
             DocumentType docType, String[] headerValues, String[] line) {
         Map<String, Serializable> values = new HashMap<String, Serializable>();
         for (int col = 0; col < headerValues.length; col++) {
