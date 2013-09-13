@@ -22,6 +22,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -44,6 +45,7 @@ import org.nuxeo.ecm.core.test.TransactionalFeature;
 import org.nuxeo.ecm.core.test.annotations.Granularity;
 import org.nuxeo.ecm.core.test.annotations.RepositoryConfig;
 import org.nuxeo.ecm.core.work.api.WorkManager;
+import org.nuxeo.runtime.api.Framework;
 import org.nuxeo.runtime.test.runner.Deploy;
 import org.nuxeo.runtime.test.runner.Features;
 import org.nuxeo.runtime.test.runner.FeaturesRunner;
@@ -93,7 +95,6 @@ public class TestCSVImport {
 
         workManager.awaitCompletion(10, TimeUnit.SECONDS);
         TransactionHelper.startTransaction();
-
         List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
         assertEquals(5, importLogs.size());
         CSVImportLog importLog = importLogs.get(0);
@@ -107,9 +108,37 @@ public class TestCSVImport {
         DocumentModel doc = session.getDocument(new PathRef("/FOOBAR 6.D.20100416.9"));
         assertEquals("FOOBAR 6.D.20100416.9", doc.getTitle());
         assertEquals("D", doc.getPropertyValue("bg:IDSubject"));
-
     }
+    
+    @Test
+    public void shouldImportFilesFromPattern() throws InterruptedException, ClientException {
+    	File ressourceRoot = FileUtils.getResourceFileFromContext("datas");
+    	File[] files = FileUtils.findFiles(ressourceRoot, "A*.pdf", false);
+    	assertEquals(1,files.length);
+    	Framework.getProperties().put("nuxeo.csv.blobs.folder", ressourceRoot.getPath());
+    	
+    	CSVImporterOptions options = CSVImporterOptions.DEFAULT_OPTIONS;
+        TransactionHelper.commitOrRollbackTransaction();
 
+        CSVImportId importId = csvImporter.launchImport(session, "/",
+                getCSVFile("AutoFileMiniNoNameNoType.csv"), options);
+
+        workManager.awaitCompletion(10, TimeUnit.SECONDS);
+        TransactionHelper.startTransaction();
+        List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
+        assertEquals(3, importLogs.size());
+        CSVImportLog importLog = importLogs.get(0);
+        assertEquals(1, importLog.getLine());
+        assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
+        assertTrue(session.exists(new PathRef("/TEST 2.D.20100416.0")));
+        DocumentModel doc = session.getDocument(new PathRef("/TEST 2.D.20100416.0"));
+        assertEquals("TEST 2.D.20100416.0", doc.getTitle());
+        
+        
+    	
+    
+    }
+    
     @Test
     public void shouldSkipExistingDocuments() throws InterruptedException,
             ClientException {

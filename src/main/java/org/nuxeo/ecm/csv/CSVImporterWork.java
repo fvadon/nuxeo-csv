@@ -78,6 +78,7 @@ import org.nuxeo.ecm.platform.url.DocumentViewImpl;
 import org.nuxeo.ecm.platform.url.api.DocumentView;
 import org.nuxeo.ecm.platform.usermanager.UserManager;
 import org.nuxeo.runtime.api.Framework;
+import org.python.parser.ast.Str;
 
 import au.com.bytecode.opencsv.CSVReader;
 
@@ -94,6 +95,14 @@ public class CSVImporterWork extends AbstractWork {
     public static final String CATEGORY_CSV_IMPORTER = "csvImporter";
 
     public static final String CONTENT_FILED_TYPE_NAME = "content";
+    
+    public static String CONTENT_AUTOIMPORT_COL = "autofileimport";
+    
+    public static String COL_BUILDING = "bg:IDBuilding";
+    public static String COL_SECTOR = "bg:IDSector";
+    public static String COL_SUBJECT = "bg:IDSubject";
+    public static String COL_DOCUMENT = "bg:IDDocument";
+    public static String COL_DOCDATE = "bg:IDDocumentDate";
 
     protected final CSVImportId id;
 
@@ -189,14 +198,8 @@ public class CSVImporterWork extends AbstractWork {
                 typeIndex = col;
             }
         }
-        /* from custom evol
-         * if no type -> File, if no name -> Calculated from other columns, so no need to log it
-        if (nameIndex == -1 || typeIndex == -1) {
-            logError(0, "Missing 'name' or 'type' column",
-                    "label.csv.importer.missingNameOrTypeColumn");
-            return;
-        }
-		*/
+
+
         boolean transactionStarted = false;
         if (!isTransactionStarted) {
             startTransaction();
@@ -299,7 +302,34 @@ public class CSVImporterWork extends AbstractWork {
         	/* Specific name calculator from  IDBUilding, IDSector, IDSubject, IDDocument, IDDocumentDate */
         	name = getCalculatedName(values);
         	//TODO autocalculate the name from other colums, maybe should be done after
-        	//name ="tobedone";
+        	int autoImportCol = -1;
+        	
+        	for (int col = 0; col < headerValues.length; col++) {
+                if (CONTENT_AUTOIMPORT_COL.equals(headerValues[col])) {
+                	autoImportCol = col;
+                }
+            }
+        	
+        	if (autoImportCol!=-1 && line[autoImportCol].equals("1")) {
+            	
+        		Serializable fieldValue = null;
+            	String blobsFolderPath = Framework.getProperty("nuxeo.csv.blobs.folder");
+            	File blobsFolder = new File(FilenameUtils.normalize(blobsFolderPath));
+            	File[] files = FileUtils.findFiles(blobsFolder, name+"*", false);
+                
+            	if (files.length>0) {
+                    FileBlob blob = new FileBlob(files[0]);
+                    blob.setFilename(files[0].getName());
+                    fieldValue = blob;
+                } else {
+                    logError(lineNumber,
+                            "The file '%s' does not exist",
+                            "label.csv.importer.notExistingFile",
+                            name+".pdf");
+                    return false;
+                }
+                values.put(CONTENT_FILED_TYPE_NAME, fieldValue);
+        	}
         }
         
         if (StringUtils.isBlank(name)) {
@@ -322,16 +352,16 @@ public class CSVImporterWork extends AbstractWork {
     private String getCalculatedName(Map<String, Serializable> values) {
 		// TODO Auto-generated method stub
     	String name = null;
-    	if(!(StringUtils.isBlank((String) values.get("bg:IDBuilding")) || 
-    			StringUtils.isBlank((String) values.get("bg:IDSector")) ||
-    			StringUtils.isBlank((String) values.get("bg:IDSubject")) ||
-    			StringUtils.isBlank((String) values.get("bg:IDDocument")) ||
-    			StringUtils.isBlank((String) values.get("bg:IDDocumentDate"))
+    	if(!(StringUtils.isBlank((String) values.get(COL_BUILDING)) || 
+    			StringUtils.isBlank((String) values.get(COL_SECTOR)) ||
+    			StringUtils.isBlank((String) values.get(COL_SUBJECT)) ||
+    			StringUtils.isBlank((String) values.get(COL_DOCUMENT)) ||
+    			StringUtils.isBlank((String) values.get(COL_DOCDATE))
     			)) {
-		name = (String) values.get("bg:IDBuilding")+" "+(String) values.get("bg:IDSector")+"."
-    			+(String) values.get("bg:IDSubject")+"."
-    			+(String) values.get("bg:IDDocumentDate")+"."
-    			+(String) values.get("bg:IDDocument");
+		name = (String) values.get(COL_BUILDING)+" "+(String) values.get(COL_SECTOR)+"."
+    			+(String) values.get(COL_SUBJECT)+"."
+    			+(String) values.get(COL_DOCDATE)+"."
+    			+(String) values.get(COL_DOCUMENT);
 		}
     	
     	return name;
@@ -347,7 +377,7 @@ public class CSVImporterWork extends AbstractWork {
 
             String fieldName = headerValue;
             if (!CSV_NAME_COL.equals(headerValue)
-                    && !CSV_TYPE_COL.equals(headerValue)) {
+                    && !CSV_TYPE_COL.equals(headerValue) && !CONTENT_AUTOIMPORT_COL.equals(headerValue)) {
                 if (!docType.hasField(fieldName)) {
                     fieldName = fieldName.split(":")[1];
                 }

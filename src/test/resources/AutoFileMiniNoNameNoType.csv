@@ -1,0 +1,4 @@
+"bg:IDBuilding","bg:IDSector","bg:IDSubject","bg:IDDocumentDate","bg:IDDocument","dc:description","autofileimport"
+"TEST",2,"D",20100416,0,,1
+"FOO",3,"D",20100416,1,"some text",1
+"BAR",4,"D",20100416,2,"some other text",
