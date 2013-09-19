@@ -78,8 +78,6 @@ import org.nuxeo.ecm.platform.url.DocumentViewImpl;
 import org.nuxeo.ecm.platform.url.api.DocumentView;
 import org.nuxeo.ecm.platform.usermanager.UserManager;
 import org.nuxeo.runtime.api.Framework;
-import org.python.parser.ast.Str;
-
 import au.com.bytecode.opencsv.CSVReader;
 
 /**
@@ -103,6 +101,8 @@ public class CSVImporterWork extends AbstractWork {
     public static String COL_SUBJECT = "bg:IDSubject";
     public static String COL_DOCUMENT = "bg:IDDocument";
     public static String COL_DOCDATE = "bg:IDDocumentDate";
+    public static String AUTOFILING_META = "filing:autoimport";
+    public static String DCTITLE = "dc:title";
 
     protected final CSVImportId id;
 
@@ -301,6 +301,7 @@ public class CSVImporterWork extends AbstractWork {
         else {
         	/* Specific name calculator from  IDBUilding, IDSector, IDSubject, IDDocument, IDDocumentDate */
         	name = getCalculatedName(values);
+        	values.put(DCTITLE,name);
         	//TODO autocalculate the name from other colums, maybe should be done after
         	int autoImportCol = -1;
         	
@@ -329,6 +330,7 @@ public class CSVImporterWork extends AbstractWork {
                     return false;
                 }
                 values.put(CONTENT_FILED_TYPE_NAME, fieldValue);
+                values.put(AUTOFILING_META, "yes");
         	}
         }
         

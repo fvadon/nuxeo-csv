@@ -133,10 +133,7 @@ public class TestCSVImport {
         assertTrue(session.exists(new PathRef("/TEST 2.D.20100416.0")));
         DocumentModel doc = session.getDocument(new PathRef("/TEST 2.D.20100416.0"));
         assertEquals("TEST 2.D.20100416.0", doc.getTitle());
-        
-        
-    	
-    
+        assertEquals("yes",doc.getPropertyValue("filing:autoimport"));  
     }
     
     @Test
