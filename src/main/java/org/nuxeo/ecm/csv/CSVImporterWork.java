@@ -100,6 +100,7 @@ public class CSVImporterWork extends AbstractWork {
 
 	public static final String CONTENT_FILED_TYPE_NAME = "content";
 	public static final String CSV_SUBJECT_TYPE ="Subject";
+	public static final String CSV_DptSubjectKey = "def:IDDepartmentSubject";
 
 	protected String parentPath;
 
@@ -249,6 +250,23 @@ public class CSVImporterWork extends AbstractWork {
 			startTransaction();
 		}
 		log.info(String.format("Done importing CSV file: %s", csvFileName));
+		
+		//send custom batch update title event
+		OperationContext ctx = new OperationContext(session);
+		try {
+			ctx.setInput(session.getRootDocument());
+			OperationChain chain = new OperationChain("UpdateAllSubjectTitles");
+			chain.add("Notification.SendEvent").set("name", "updateSubjectTitles");
+			Framework.getLocalService(AutomationService.class).run(ctx, chain);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new RuntimeException("interrupted", e);
+		} catch (Exception e) {
+			log.error(String.format(
+					"Unable to batch update subject titles", e.getMessage()));
+			log.debug(e, e);
+		}
+		
 	}
 
 	/**
@@ -455,7 +473,12 @@ public class CSVImporterWork extends AbstractWork {
 					Path targetPath = new Path(parentPath);
 					String parentName = targetPath.lastSegment();
 					String newParentPath = targetPath.removeLastSegments(1).toString();
-					//Recursively creates  the parent Subject
+					//Recursively creates  the parent Subject but first remove one level of IDDepartmentSubject to match what is being created
+					if (properties.containsKey(CSV_DptSubjectKey)) {
+						Path departementSubjectAsPath =new Path(properties.get(CSV_DptSubjectKey).toString());
+						String troncatedDepartmentSubject = departementSubjectAsPath.removeLastSegments(1).toString();
+						properties.put(CSV_DptSubjectKey, troncatedDepartmentSubject);
+					}
 					createDocument(lineNumber, newParentPath, parentName, CSV_SUBJECT_TYPE, properties);
 					/*logError(lineNumber, "Parent document '%s' did not exist, was created",
 							"label.csv.importer.parentDoesNotExist", parentPath);*/
