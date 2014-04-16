@@ -42,6 +42,7 @@ import org.nuxeo.ecm.core.test.TransactionalFeature;
 import org.nuxeo.ecm.core.test.annotations.Granularity;
 import org.nuxeo.ecm.core.test.annotations.RepositoryConfig;
 import org.nuxeo.ecm.core.work.api.WorkManager;
+import org.nuxeo.runtime.api.Framework;
 import org.nuxeo.runtime.test.runner.Deploy;
 import org.nuxeo.runtime.test.runner.Features;
 import org.nuxeo.runtime.test.runner.FeaturesRunner;
@@ -56,208 +57,239 @@ import com.google.inject.Inject;
  */
 @RunWith(FeaturesRunner.class)
 @Features({ TransactionalFeature.class, CoreFeature.class })
-@Deploy({ "org.nuxeo.ecm.csv", "org.nuxeo.runtime.datasource",
-        "org.nuxeo.ecm.platform.types.api", "org.nuxeo.ecm.platform.types.core" })
+@Deploy({ "org.nuxeo.ecm.csv.custom", "org.nuxeo.runtime.datasource",
+	"org.nuxeo.ecm.platform.types.api", "org.nuxeo.ecm.platform.types.core" })
 @RepositoryConfig(repositoryFactoryClass = PoolingRepositoryFactory.class, cleanup = Granularity.METHOD)
-@LocalDeploy("org.nuxeo.ecm.csv:test-ui-types-contrib.xml")
+@LocalDeploy("org.nuxeo.ecm.csv.custom:test-ui-types-contrib.xml")
 public class TestCSVImport {
 
-    private static final String DOCS_OK_CSV = "docs_ok.csv";
+	private static final String DOCS_OK_CSV = "docs_ok.csv";
 
-    private static final String DOCS_WITH_FOLDERS_OK_CSV = "docs_with_folders_ok.csv";
+	private static final String DOCS_WITH_FOLDERS_OK_CSV = "docs_with_folders_ok.csv";
 
-    private static final String DOCS_NOT_OK_CSV = "docs_not_ok.csv";
+	private static final String DOCS_NOT_OK_CSV = "docs_not_ok.csv";
 
-    @Inject
-    protected CoreSession session;
+	private static final String DOCS_WITH_AUTO_FILE_IMPORT = "docs_with_folders_and_auto_fileImport.csv";
 
-    @Inject
-    protected CSVImporter csvImporter;
+	@Inject
+	protected CoreSession session;
 
-    @Inject
-    protected WorkManager workManager;
+	@Inject
+	protected CSVImporter csvImporter;
 
-    @Before
-    public void clearWorkQueue() {
-        workManager.clearCompletedWork(0);
-    }
+	@Inject
+	protected WorkManager workManager;
 
-    private File getCSVFile(String name) {
-        return new File(FileUtils.getResourcePathFromContext(name));
-    }
+	@Before
+	public void clearWorkQueue() {
+		workManager.clearCompletedWork(0);
+	}
 
-    @Test
-    public void shouldCreateAllDocuments() throws InterruptedException,
-            ClientException {
-        CSVImporterOptions options = CSVImporterOptions.DEFAULT_OPTIONS;
-        TransactionHelper.commitOrRollbackTransaction();
+	private File getCSVFile(String name) {
+		return new File(FileUtils.getResourcePathFromContext(name));
+	}
 
-        String importId = csvImporter.launchImport(session, "/",
-                getCSVFile(DOCS_OK_CSV), DOCS_OK_CSV, options);
+	@Test
+	public void shouldCreateAllDocuments() throws InterruptedException,
+	ClientException {
+		CSVImporterOptions options = CSVImporterOptions.DEFAULT_OPTIONS;
+		TransactionHelper.commitOrRollbackTransaction();
 
-        workManager.awaitCompletion(10000, TimeUnit.SECONDS);
-        TransactionHelper.startTransaction();
+		String importId = csvImporter.launchImport(session, "/",
+				getCSVFile(DOCS_OK_CSV), DOCS_OK_CSV, options);
 
-        List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
-        assertEquals(2, importLogs.size());
-        CSVImportLog importLog = importLogs.get(0);
-        assertEquals(1, importLog.getLine());
-        assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
-        importLog = importLogs.get(1);
-        assertEquals(2, importLog.getLine());
-        assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
+		workManager.awaitCompletion(10000, TimeUnit.SECONDS);
+		TransactionHelper.startTransaction();
 
-        assertTrue(session.exists(new PathRef("/myfile")));
-        DocumentModel doc = session.getDocument(new PathRef("/myfile"));
-        assertEquals("My File", doc.getTitle());
-        assertEquals("a simple file", doc.getPropertyValue("dc:description"));
-        List<String> contributors = Arrays.asList((String[]) doc.getPropertyValue("dc:contributors"));
-        assertEquals(3, contributors.size());
-        assertTrue(contributors.contains("contributor1"));
-        assertTrue(contributors.contains("contributor2"));
-        assertTrue(contributors.contains("contributor3"));
-        Calendar issueDate = (Calendar) doc.getPropertyValue("dc:issued");
-        assertEquals(
-                "10/01/2010",
-                new SimpleDateFormat(options.getDateFormat()).format(issueDate.getTime()));
+		List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
+		assertEquals(2, importLogs.size());
+		CSVImportLog importLog = importLogs.get(0);
+		assertEquals(1, importLog.getLine());
+		assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
+		importLog = importLogs.get(1);
+		assertEquals(2, importLog.getLine());
+		assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
 
-        assertTrue(session.exists(new PathRef("/mynote")));
-        doc = session.getDocument(new PathRef("/mynote"));
-        assertEquals("My Note", doc.getTitle());
-        assertEquals("a simple note", doc.getPropertyValue("dc:description"));
-        assertEquals("note content", doc.getPropertyValue("note:note"));
-        contributors = Arrays.asList((String[]) doc.getPropertyValue("dc:contributors"));
-        assertEquals(3, contributors.size());
-        assertTrue(contributors.contains("bender"));
-        assertTrue(contributors.contains("leela"));
-        assertTrue(contributors.contains("fry"));
-        issueDate = (Calendar) doc.getPropertyValue("dc:issued");
-        assertEquals(
-                "12/12/2012",
-                new SimpleDateFormat(options.getDateFormat()).format(issueDate.getTime()));
-    }
+		assertTrue(session.exists(new PathRef("/myfile")));
+		DocumentModel doc = session.getDocument(new PathRef("/myfile"));
+		assertEquals("My File", doc.getTitle());
+		assertEquals("a simple file", doc.getPropertyValue("dc:description"));
+		List<String> contributors = Arrays.asList((String[]) doc.getPropertyValue("dc:contributors"));
+		assertEquals(3, contributors.size());
+		assertTrue(contributors.contains("contributor1"));
+		assertTrue(contributors.contains("contributor2"));
+		assertTrue(contributors.contains("contributor3"));
+		Calendar issueDate = (Calendar) doc.getPropertyValue("dc:issued");
+		assertEquals(
+				"10/01/2010",
+				new SimpleDateFormat(options.getDateFormat()).format(issueDate.getTime()));
 
-    @Test
-    public void shouldSkipExistingDocuments() throws InterruptedException,
-            ClientException {
-        DocumentModel doc = session.createDocumentModel("/", "mynote", "Note");
-        doc.setPropertyValue("dc:title", "Existing Note");
-        session.createDocument(doc);
-        TransactionHelper.commitOrRollbackTransaction();
+		assertTrue(session.exists(new PathRef("/mynote")));
+		doc = session.getDocument(new PathRef("/mynote"));
+		assertEquals("My Note", doc.getTitle());
+		assertEquals("a simple note", doc.getPropertyValue("dc:description"));
+		assertEquals("note content", doc.getPropertyValue("note:note"));
+		contributors = Arrays.asList((String[]) doc.getPropertyValue("dc:contributors"));
+		assertEquals(3, contributors.size());
+		assertTrue(contributors.contains("bender"));
+		assertTrue(contributors.contains("leela"));
+		assertTrue(contributors.contains("fry"));
+		issueDate = (Calendar) doc.getPropertyValue("dc:issued");
+		assertEquals(
+				"12/12/2012",
+				new SimpleDateFormat(options.getDateFormat()).format(issueDate.getTime()));
+	}
 
-        CSVImporterOptions options = new CSVImporterOptions.Builder().updateExisting(
-                false).build();
-        String importId = csvImporter.launchImport(session, "/",
-                getCSVFile(DOCS_OK_CSV), DOCS_OK_CSV, options);
+	@Test
+	public void shouldSkipExistingDocuments() throws InterruptedException,
+	ClientException {
+		DocumentModel doc = session.createDocumentModel("/", "mynote", "Note");
+		doc.setPropertyValue("dc:title", "Existing Note");
+		session.createDocument(doc);
+		TransactionHelper.commitOrRollbackTransaction();
 
-        workManager.awaitCompletion(10, TimeUnit.SECONDS);
-        TransactionHelper.startTransaction();
+		CSVImporterOptions options = new CSVImporterOptions.Builder().updateExisting(
+				false).build();
+		String importId = csvImporter.launchImport(session, "/",
+				getCSVFile(DOCS_OK_CSV), DOCS_OK_CSV, options);
 
-        List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
-        assertEquals(2, importLogs.size());
-        CSVImportLog importLog = importLogs.get(0);
-        assertEquals(1, importLog.getLine());
-        assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
-        assertEquals("Document created", importLog.getMessage());
-        importLog = importLogs.get(1);
-        assertEquals(2, importLog.getLine());
-        assertEquals(CSVImportLog.Status.SKIPPED, importLog.getStatus());
-        assertEquals("Document already exists", importLog.getMessage());
+		workManager.awaitCompletion(10, TimeUnit.SECONDS);
+		TransactionHelper.startTransaction();
 
-        assertTrue(session.exists(new PathRef("/myfile")));
-        doc = session.getDocument(new PathRef("/myfile"));
-        assertEquals("My File", doc.getTitle());
-        assertEquals("a simple file", doc.getPropertyValue("dc:description"));
+		List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
+		assertEquals(2, importLogs.size());
+		CSVImportLog importLog = importLogs.get(0);
+		assertEquals(1, importLog.getLine());
+		assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
+		assertEquals("Document created", importLog.getMessage());
+		importLog = importLogs.get(1);
+		assertEquals(2, importLog.getLine());
+		assertEquals(CSVImportLog.Status.SKIPPED, importLog.getStatus());
+		assertEquals("Document already exists", importLog.getMessage());
 
-        assertTrue(session.exists(new PathRef("/mynote")));
-        doc = session.getDocument(new PathRef("/mynote"));
-        assertEquals("Existing Note", doc.getTitle());
-        assertFalse("a simple note".equals(doc.getPropertyValue("dc:description")));
-    }
+		assertTrue(session.exists(new PathRef("/myfile")));
+		doc = session.getDocument(new PathRef("/myfile"));
+		assertEquals("My File", doc.getTitle());
+		assertEquals("a simple file", doc.getPropertyValue("dc:description"));
 
-    @Test
-    public void shouldStoreLineWithErrors() throws InterruptedException,
-            ClientException {
-        CSVImporterOptions options = new CSVImporterOptions.Builder().updateExisting(
-                false).build();
-        TransactionHelper.commitOrRollbackTransaction();
-        String importId = csvImporter.launchImport(session, "/",
-                getCSVFile(DOCS_NOT_OK_CSV), DOCS_NOT_OK_CSV, options);
-        workManager.awaitCompletion(10, TimeUnit.SECONDS);
-        TransactionHelper.startTransaction();
+		assertTrue(session.exists(new PathRef("/mynote")));
+		doc = session.getDocument(new PathRef("/mynote"));
+		assertEquals("Existing Note", doc.getTitle());
+		assertFalse("a simple note".equals(doc.getPropertyValue("dc:description")));
+	}
 
-        List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
-        assertEquals(5, importLogs.size());
+	@Test
+	public void shouldStoreLineWithErrors() throws InterruptedException,
+	ClientException {
+		CSVImporterOptions options = new CSVImporterOptions.Builder().updateExisting(
+				false).build();
+		TransactionHelper.commitOrRollbackTransaction();
+		String importId = csvImporter.launchImport(session, "/",
+				getCSVFile(DOCS_NOT_OK_CSV), DOCS_NOT_OK_CSV, options);
+		workManager.awaitCompletion(10, TimeUnit.SECONDS);
+		TransactionHelper.startTransaction();
 
-        CSVImportLog importLog = importLogs.get(0);
-        assertEquals(1, importLog.getLine());
-        assertEquals(CSVImportLog.Status.ERROR, importLog.getStatus());
-        assertEquals(
-                "Unable to convert field 'dc:issued' with value '10012010'",
-                importLog.getMessage());
-        importLog = importLogs.get(1);
-        assertEquals(2, importLog.getLine());
-        assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
-        assertEquals("Document created", importLog.getMessage());
-        importLog = importLogs.get(2);
-        assertEquals(3, importLog.getLine());
-        assertEquals(CSVImportLog.Status.ERROR, importLog.getStatus());
-        assertEquals("The type 'NotExistingType' does not exist",
-                importLog.getMessage());
-        importLog = importLogs.get(3);
-        assertEquals(4, importLog.getLine());
-        assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
-        assertEquals("Document created", importLog.getMessage());
-        importLog = importLogs.get(4);
-        assertEquals(5, importLog.getLine());
-        assertEquals(CSVImportLog.Status.ERROR, importLog.getStatus());
-        assertEquals("'Domain' type is not allowed in 'Root'",
-                importLog.getMessage());
+		List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
+		assertEquals(5, importLogs.size());
 
-        assertFalse(session.exists(new PathRef("/myfile")));
-        assertTrue(session.exists(new PathRef("/mynote")));
-        assertFalse(session.exists(new PathRef("/nonexisting")));
-        assertTrue(session.exists(new PathRef("/mynote2")));
-    }
+		CSVImportLog importLog = importLogs.get(0);
+		assertEquals(1, importLog.getLine());
+		assertEquals(CSVImportLog.Status.ERROR, importLog.getStatus());
+		assertEquals(
+				"Unable to convert field 'dc:issued' with value '10012010'",
+				importLog.getMessage());
+		importLog = importLogs.get(1);
+		assertEquals(2, importLog.getLine());
+		assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
+		assertEquals("Document created", importLog.getMessage());
+		importLog = importLogs.get(2);
+		assertEquals(3, importLog.getLine());
+		assertEquals(CSVImportLog.Status.ERROR, importLog.getStatus());
+		assertEquals("The type 'NotExistingType' does not exist",
+				importLog.getMessage());
+		importLog = importLogs.get(3);
+		assertEquals(4, importLog.getLine());
+		assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
+		assertEquals("Document created", importLog.getMessage());
+		importLog = importLogs.get(4);
+		assertEquals(5, importLog.getLine());
+		assertEquals(CSVImportLog.Status.ERROR, importLog.getStatus());
+		assertEquals("'Domain' type is not allowed in 'Root'",
+				importLog.getMessage());
 
-    @Test
-    public void shouldImportDirectoryStructure() throws InterruptedException,
-            ClientException {
-        CSVImporterOptions options = new CSVImporterOptions.Builder().updateExisting(
-                false).build();
-        TransactionHelper.commitOrRollbackTransaction();
-        String importId = csvImporter.launchImport(session, "/",
-                getCSVFile(DOCS_WITH_FOLDERS_OK_CSV), DOCS_WITH_FOLDERS_OK_CSV,
-                options);
-        workManager.awaitCompletion(10, TimeUnit.SECONDS);
-        TransactionHelper.startTransaction();
+		assertFalse(session.exists(new PathRef("/myfile")));
+		assertTrue(session.exists(new PathRef("/mynote")));
+		assertFalse(session.exists(new PathRef("/nonexisting")));
+		assertTrue(session.exists(new PathRef("/mynote2")));
+	}
 
-        List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
-        assertEquals(5, importLogs.size());
+	@Test
+	public void shouldImportDirectoryStructure() throws InterruptedException,
+	ClientException {
+		CSVImporterOptions options = new CSVImporterOptions.Builder().updateExisting(
+				false).build();
+		TransactionHelper.commitOrRollbackTransaction();
+		String importId = csvImporter.launchImport(session, "/",
+				getCSVFile(DOCS_WITH_FOLDERS_OK_CSV), DOCS_WITH_FOLDERS_OK_CSV,
+				options);
+		workManager.awaitCompletion(10, TimeUnit.SECONDS);
+		TransactionHelper.startTransaction();
 
-        for (int i = 0; i < 4; i++) {
-            assertEquals(CSVImportLog.Status.SUCCESS,
-                    importLogs.get(i).getStatus());
-        }
-        CSVImportLog importLog = importLogs.get(4);
-        assertEquals(CSVImportLog.Status.ERROR, importLog.getStatus());
-        assertEquals("Parent document '/folder/folder' does not exist",
-                importLog.getMessage());
+		List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
+		assertEquals(5, importLogs.size());
 
-        assertTrue(session.exists(new PathRef("/folder")));
-        assertTrue(session.exists(new PathRef("/folder/doc1")));
-        assertTrue(session.exists(new PathRef("/folder/subfolder")));
-        assertTrue(session.exists(new PathRef("/folder/subfolder/doc2")));
-        assertFalse(session.exists(new PathRef("/folder/folder/doc3")));
+		for (int i = 0; i < 4; i++) {
+			assertEquals(CSVImportLog.Status.SUCCESS,
+					importLogs.get(i).getStatus());
+		}
+		CSVImportLog importLog = importLogs.get(4);
+		assertEquals(CSVImportLog.Status.ERROR, importLog.getStatus());
+		assertEquals("Parent document '/folder/folder' does not exist",
+				importLog.getMessage());
 
-        DocumentModel doc = session.getDocument(new PathRef("/folder"));
-        assertEquals("Folder", doc.getType());
-        doc = session.getDocument(new PathRef("/folder/doc1"));
-        assertEquals("File", doc.getType());
-        doc = session.getDocument(new PathRef("/folder/subfolder"));
-        assertEquals("Folder", doc.getType());
-        doc = session.getDocument(new PathRef("/folder/subfolder/doc2"));
-        assertEquals("File", doc.getType());
-    }
+		assertTrue(session.exists(new PathRef("/folder")));
+		assertTrue(session.exists(new PathRef("/folder/doc1")));
+		assertTrue(session.exists(new PathRef("/folder/subfolder")));
+		assertTrue(session.exists(new PathRef("/folder/subfolder/doc2")));
+		assertFalse(session.exists(new PathRef("/folder/folder/doc3")));
+
+		DocumentModel doc = session.getDocument(new PathRef("/folder"));
+		assertEquals("Folder", doc.getType());
+		doc = session.getDocument(new PathRef("/folder/doc1"));
+		assertEquals("File", doc.getType());
+		doc = session.getDocument(new PathRef("/folder/subfolder"));
+		assertEquals("Folder", doc.getType());
+		doc = session.getDocument(new PathRef("/folder/subfolder/doc2"));
+		assertEquals("File", doc.getType());
+	}
+
+	@Test
+	public void shouldImportFilesFromPattern() throws InterruptedException, ClientException {
+		File ressourceRoot = FileUtils.getResourceFileFromContext("datas");
+		File[] files = FileUtils.findFiles(ressourceRoot, "CUR*.pdf", false);
+		assertEquals(2,files.length);
+		Framework.getProperties().put("nuxeo.csv.blobs.folder", ressourceRoot.getPath());
+
+
+		CSVImporterOptions options = new CSVImporterOptions.Builder().updateExisting(
+				false).build();
+		TransactionHelper.commitOrRollbackTransaction();
+		String importId = csvImporter.launchImport(session, "/",
+				getCSVFile(DOCS_WITH_AUTO_FILE_IMPORT), DOCS_WITH_AUTO_FILE_IMPORT,
+				options);
+		workManager.awaitCompletion(10, TimeUnit.SECONDS);
+		TransactionHelper.startTransaction();
+
+		List<CSVImportLog> importLogs = csvImporter.getImportLogs(importId);
+
+		assertEquals(4, importLogs.size());
+		CSVImportLog importLog = importLogs.get(0);
+		assertEquals(1, importLog.getLine());
+		assertTrue(session.exists(new PathRef("/folder1")));
+		assertEquals(CSVImportLog.Status.SUCCESS, importLog.getStatus());
+		DocumentModel doc = session.getDocument(new PathRef("/CUR 2.A.19950519.1"));
+		assertEquals("CUR1", doc.getTitle());    
+	}
+
 
 }

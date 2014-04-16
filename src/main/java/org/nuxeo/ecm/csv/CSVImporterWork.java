@@ -41,6 +41,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.nuxeo.common.utils.FileUtils;
 import org.nuxeo.common.utils.Path;
 import org.nuxeo.ecm.automation.AutomationService;
 import org.nuxeo.ecm.automation.OperationChain;
@@ -101,6 +102,8 @@ public class CSVImporterWork extends AbstractWork {
 	public static final String CONTENT_FILED_TYPE_NAME = "content";
 	public static final String CSV_SUBJECT_TYPE ="Subject";
 	public static final String CSV_DptSubjectKey = "def:IDDepartmentSubject";
+    public static String CONTENT_AUTOIMPORT_COL = "autofileimport";
+    public static String FOLDERISH_FACET="Folderish";
 
 	protected String parentPath;
 
@@ -251,7 +254,7 @@ public class CSVImporterWork extends AbstractWork {
 		}
 		log.info(String.format("Done importing CSV file: %s", csvFileName));
 		
-		//send custom batch update title event
+		//send custom batch update title event for proto
 		OperationContext ctx = new OperationContext(session);
 		try {
 			ctx.setInput(session.getRootDocument());
@@ -305,6 +308,36 @@ public class CSVImporterWork extends AbstractWork {
 			// skip this line
 			return false;
 		}
+		// Auto file import for proto
+    	int autoImportCol = -1;
+    	
+    	for (int col = 0; col < headerValues.length; col++) {
+            if (CONTENT_AUTOIMPORT_COL.equals(headerValues[col])) {
+            	autoImportCol = col;
+            }
+        }
+    	
+    	if (autoImportCol!=-1 && line[autoImportCol].equals("1") && !docType.hasFacet(FOLDERISH_FACET) ) {
+        	
+    		Serializable fieldValue = null;
+        	String blobsFolderPath = Framework.getProperty("nuxeo.csv.blobs.folder");
+        	File blobsFolder = new File(FilenameUtils.normalize(blobsFolderPath));
+        	File[] files = FileUtils.findFiles(blobsFolder, name.substring(name.lastIndexOf("/")+1)+"*", false);
+            
+        	if (files.length>0) {
+                FileBlob blob = new FileBlob(files[0]);
+                blob.setFilename(files[0].getName());
+                fieldValue = blob;
+            } else {
+                logError(lineNumber,
+                        "The file '%s' does not exist",
+                        "label.csv.importer.notExistingFile",
+                        name+".pdf");
+                return false;
+            }
+            values.put(CONTENT_FILED_TYPE_NAME, fieldValue);
+    	}
+
 
 		return createOrUpdateDocument(lineNumber, parentPath, name, type,
 				values);
@@ -320,7 +353,7 @@ public class CSVImporterWork extends AbstractWork {
 
 			String fieldName = headerValue;
 			if (!CSV_NAME_COL.equals(headerValue)
-					&& !CSV_TYPE_COL.equals(headerValue)) {
+                    && !CSV_TYPE_COL.equals(headerValue) && !CONTENT_AUTOIMPORT_COL.equals(headerValue)) {
 				if (!docType.hasField(fieldName)) {
 					fieldName = fieldName.split(":")[1];
 				}

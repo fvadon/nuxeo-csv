@@ -8,7 +8,7 @@
     <version>5.9.2-SNAPSHOT</version>
   </parent>
   <groupId>org.nuxeo.csv</groupId>
-  <artifactId>nuxeo-csv</artifactId>
+  <artifactId>nuxeo-csv-custom</artifactId>
   <name>Nuxeo CSV Importer / Exporter</name>
   <description>Nuxeo CSV Importer / Exporter</description>
   <dependencies>
