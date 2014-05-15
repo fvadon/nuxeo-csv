@@ -332,7 +332,7 @@ public class CSVImporterWork extends AbstractWork {
                 logError(lineNumber,
                         "The file '%s' does not exist",
                         "label.csv.importer.notExistingFile",
-                        name+".pdf");
+                        "starting by "+name.substring(name.lastIndexOf("/")+1));
                 return false;
             }
             values.put(CONTENT_FILED_TYPE_NAME, fieldValue);
